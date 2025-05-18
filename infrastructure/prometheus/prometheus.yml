@@ -1,0 +1,137 @@
+# infrastructure/prometheus/prometheus.yml
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 30s
+  external_labels:
+    cluster: "crypto-prod-01"
+    environment: "production"
+    region: "us-west-2"
+
+alerting:
+  alertmanagers:
+  - scheme: https
+    path_prefix: /alertmanager
+    timeout: 10s
+    api_version: v2
+    tls_config:
+      ca_file: /etc/prometheus/certs/ca.pem
+      cert_file: /etc/prometheus/certs/client.pem
+      key_file: /etc/prometheus/certs/client-key.pem
+      insecure_skip_verify: false
+    static_configs:
+    - targets: ['alertmanager-01:9093', 'alertmanager-02:9093']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __scheme__
+        regex: (.*)
+        replacement: https
+
+rule_files:
+  - "/etc/prometheus/rules/alerts/*.rules.yml"
+  - "/etc/prometheus/rules/recordings/*.rules.yml"
+
+scrape_configs:
+  - job_name: 'api-server'
+    metrics_path: '/metrics'
+    scheme: https
+    authorization:
+      credentials_file: '/etc/prometheus/secrets/api-server.creds'
+    tls_config:
+      ca_file: /etc/prometheus/certs/ca.pem
+      insecure_skip_verify: false
+    static_configs:
+      - targets: ['api-01:3000', 'api-02:3000', 'api-03:3000']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+)(:\d+)?'
+        replacement: '$1'
+      - action: labeldrop
+        regex: '(debug|test|experimental)_.*'
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'go_.*|process_.*'
+        action: drop
+
+  - job_name: 'worker-server'
+    metrics_path: '/metrics'
+    scheme: https
+    params:
+      format: ['prometheus']
+    static_configs:
+      - targets: ['worker-01:3001', 'worker-02:3001']
+    scrape_interval: 30s
+    scrape_timeout: 15s
+    honor_labels: true
+    tls_config:
+      ca_file: /etc/prometheus/certs/ca.pem
+
+  - job_name: 'node-exporter'
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['node-01:9100', 'node-02:9100', 'node-03:9100']
+    params:
+      collect[]:
+        - cpu
+        - meminfo
+        - diskstats
+        - netdev
+        - filesystem
+    metric_relabel_configs:
+      - source_labels: [mountpoint]
+        regex: '/var/lib/docker.*|/run/.*'
+        action: drop
+
+  - job_name: 'redis-exporter'
+    static_configs:
+      - targets: ['redis-01:9121', 'redis-02:9121']
+    params:
+      check-keys: ['*']
+      count-keys: ['*']
+    scrape_interval: 20s
+
+  - job_name: 'mongodb-exporter'
+    static_configs:
+      - targets: ['mongodb-01:9216', 'mongodb-02:9216']
+    metric_relabel_configs:
+      - source_labels: [state]
+        regex: 'idle'
+        action: drop
+
+  - job_name: 'nats'
+    metrics_path: '/metrics'
+    scheme: https
+    static_configs:
+      - targets: ['nats-01:8222', 'nats-02:8222']
+    tls_config:
+      ca_file: /etc/prometheus/certs/ca.pem
+
+  - job_name: 'blackbox-http'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+        - https://api.crypto-stats.com/health
+        - https://worker.crypto-stats.com/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+remote_write:
+  - url: "https://thanos-receive.crypto-stats.com/api/v1/receive"
+    queue_config:
+      max_samples_per_send: 10000
+      capacity: 25000
+      max_shards: 200
+    write_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'up|go_.*'
+        action: keep
+    tls_config:
+      ca_file: /etc/prometheus/certs/ca.pem

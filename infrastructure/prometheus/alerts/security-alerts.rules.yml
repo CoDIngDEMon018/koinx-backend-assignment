@@ -1,0 +1,156 @@
+# infrastructure/prometheus/alerts/security-alerts.rules.yml
+groups:
+- name: security-monitoring
+  rules:
+  - alert: BruteforceAttemptDetected
+    expr: |
+      sum by (source_ip, username) (
+        rate(auth_failed_attempts_total[5m])
+      ) > 15
+    for: 3m
+    labels:
+      severity: critical
+      team: security
+      priority: p0
+      playbook: "https://runbook.example.com/bruteforce-response"
+    annotations:
+      summary: "Bruteforce attack detected from {{ $labels.source_ip }}"
+      description: |
+        {{ $value | humanize }} failed auth attempts/min
+        IP: {{ $labels.source_ip }} ({{ $labels.geoip_country }})
+        User Agent: {{ $labels.user_agent }}
+        Last Successful Login: {{ query "last_successful_login{username='$username'}" | first | value | time }}
+
+  - alert: DataExfiltrationAnomaly
+    expr: |
+      (
+        rate(data_export_bytes_total[10m]) 
+        > 1.5 * rate(data_export_bytes_total[10m] offset 1h)
+      ) and (rate(data_export_bytes_total[10m]) > 1e8)  # 100MB
+    for: 5m
+    labels:
+      severity: critical
+      team: security
+    annotations:
+      description: |
+        Data export anomaly detected: {{ $value | humanize }} bytes/min
+        Destination: {{ $labels.destination_ip }}
+        User: {{ $labels.operator }}
+
+  - alert: CertificateExpiryStaged
+    expr: |
+      ssl_certificate_expiry_seconds < 86400 * 30  # 30 days
+    for: 1m
+    labels:
+      severity: warning
+      team: security
+    annotations:
+      description: "Certificate '{{ $labels.cn }}' expiring in {{ $value | humanizeDuration }}"
+
+  - alert: APISecurityPolicyViolation
+    expr: |
+      sum by(resource, verb) (
+        rate(api_request_total{status=~"4..",verb!~"GET|HEAD"}[15m])
+      ) > 10
+    for: 10m
+    labels:
+      severity: warning
+      team: security
+    annotations:
+      description: |
+        Suspicious API activity: {{ $labels.verb }} {{ $labels.resource }}
+        Client: {{ $labels.client_id }} ({{ $labels.user }})
+
+  - alert: DataIntegrityBreach
+    expr: |
+      (
+        abs(
+          api_price_usd{source="internal"} 
+          - external_price_usd{source="coingecko"}
+        ) / external_price_usd{source="coingecko"} 
+      ) > 0.05
+    for: 10m
+    labels:
+      severity: critical
+      team: security
+      priority: p0
+    annotations:
+      description: |
+        Price discrepancy for {{ $labels.coin }}: 
+        Internal ${{ printf "%.2f" $value.internal }} vs 
+        External ${{ printf "%.2f" $value.external }}
+
+  - alert: UnauthorizedConfigurationChange
+    expr: |
+      changes(config_version{environment="prod"}[1h]) > 0
+      unless config_approved_deployment == 1
+    for: 1m
+    labels:
+      severity: critical
+      team: security
+    annotations:
+      description: "Unauthorized production config change detected"
+
+  - alert: SecurityHeaderMissing
+    expr: |
+      avg_over_time(security_headers_present{header=~"CSP|X-Content-Type-Options"}[1h]) < 1
+    for: 15m
+    labels:
+      severity: warning
+      team: security
+    annotations:
+      description: "Missing security headers on {{ $labels.ingress }}"
+
+  - alert: SQLInjectionPattern
+    expr: |
+      sum by(query) (
+        rate(sql_queries_total{query=~".*(UNION|SELECT|DELETE).*"}[5m])
+      ) > 5
+    for: 2m
+    labels:
+      severity: critical
+      team: security
+    annotations:
+      description: |
+        Potential SQL injection detected: {{ $labels.query | trunc 50 }}
+        Source: {{ $labels.client_ip }}
+
+  - alert: GeographicAccessAnomaly
+    expr: |
+      sum by(country) (
+        rate(api_request_total{geoip_country!="US"}[15m])
+      ) 
+      > 0.2 * sum without(country) (rate(api_request_total[15m]))
+    for: 30m
+    labels:
+      severity: warning
+      team: security
+    annotations:
+      description: |
+        Unusual traffic from {{ $labels.country }}: 
+        {{ $value | humanizePercentage }} of total requests
+
+  - alert: MFAFailureRate
+    expr: |
+      rate(mfa_failures_total[1h]) 
+      / rate(mfa_attempts_total[1h]) > 0.2
+    for: 15m
+    labels:
+      severity: warning
+      team: security
+    annotations:
+      description: "High MFA failure rate ({{ $value | humanizePercentage }})"
+
+  - alert: TokenAbuseDetection
+    expr: |
+      count by(token_hash) (
+        rate(api_request_total[15m])
+      ) > 100
+    for: 5m
+    labels:
+      severity: critical
+      team: security
+    annotations:
+      description: |
+        Potential token abuse detected: 
+        {{ $value }} requests/min using token {{ $labels.token_hash | trunc 8 }}

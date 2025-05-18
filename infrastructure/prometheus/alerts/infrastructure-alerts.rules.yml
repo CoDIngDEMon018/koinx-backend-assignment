@@ -1,0 +1,150 @@
+# infrastructure/prometheus/alerts/infrastructure-alerts.rules.yml
+groups:
+- name: infrastructure-alerts
+  rules:
+  - alert: NodeDown
+    expr: up{job=~"node-exporter|docker-exporter"} == 0
+    for: 5m
+    labels:
+      severity: critical
+      component: infrastructure
+      team: sre
+      dashboard: node-health
+      escalation: pagerduty
+    annotations:
+      description: 'Instance {{ $labels.instance }} ({{ $labels.job }}) has been down for 5 minutes'
+      runbook: 'https://runbook.example.com/node-down'
+      impact: 'All services on this node may be unavailable'
+
+  - alert: HighDiskUsage
+    expr: |
+      100 - (
+        node_filesystem_avail_bytes{fstype!~"tmpfs|squashfs|overlay", mountpoint!=""} 
+        / node_filesystem_size_bytes 
+        * 100
+      ) > 85
+    for: 30m
+    labels:
+      severity: warning
+      component: storage
+      team: storage
+    annotations:
+      description: '{{ $labels.mountpoint }} on {{ $labels.instance }} is {{ $value | humanizePercentage }} full'
+      runbook: 'https://runbook.example.com/disk-usage'
+      recommendation: 'Consider expanding storage or cleaning up old data'
+
+  - alert: MemoryPressure
+    expr: |
+      (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+    for: 15m
+    labels:
+      severity: warning
+      component: infrastructure
+      team: sre
+    annotations:
+      description: 'Memory usage on {{ $labels.instance }} is {{ $value | humanizePercentage }}'
+      runbook: 'https://runbook.example.com/memory-pressure'
+
+  - alert: HighCPUUsage
+    expr: |
+      100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+    for: 10m
+    labels:
+      severity: warning
+      component: compute
+      team: sre
+    annotations:
+      description: 'CPU usage on {{ $labels.instance }} is {{ $value | humanizePercentage }}'
+      runbook: 'https://runbook.example.com/high-cpu'
+
+  - alert: DiskIOStress
+    expr: |
+      rate(node_disk_io_time_seconds_total[5m]) * 100 > 90
+    for: 15m
+    labels:
+      severity: warning
+      component: storage
+      team: storage
+    annotations:
+      description: 'Disk {{ $labels.device }} I/O utilization at {{ $value | humanizePercentage }}'
+
+  - alert: KubernetesNodePressure
+    expr: |
+      kube_node_status_condition{condition=~"MemoryPressure|DiskPressure|PIDPressure", status="true"} == 1
+    for: 5m
+    labels:
+      severity: critical
+      component: kubernetes
+      team: k8s
+    annotations:
+      description: 'Node {{ $labels.node }} experiencing {{ $labels.condition }}'
+      runbook: 'https://runbook.example.com/k8s-node-pressure'
+
+  - alert: CertificateExpiryImminent
+    expr: |
+      ssl_certificate_expiry_seconds < 86400 * 7  # 7 days
+    for: 5m
+    labels:
+      severity: critical
+      component: security
+      team: security
+    annotations:
+      description: 'Certificate for {{ $labels.cn }} expires in {{ $value | humanizeDuration }}'
+
+  - alert: NetworkSaturation
+    expr: |
+      (
+        rate(node_network_receive_bytes_total[5m]) + 
+        rate(node_network_transmit_bytes_total[5m])
+      ) / (node_network_speed_bytes * 0.8) > 0.7  # 70% of max bandwidth
+    for: 15m
+    labels:
+      severity: warning
+      component: network
+      team: network
+    annotations:
+      description: 'Network interface {{ $labels.device }} at {{ $value | humanizePercentage }} capacity'
+
+  - alert: HardwareHealthDegraded
+    expr: |
+      node_hwmonitor_sensor_alerts > 0
+    for: 2m
+    labels:
+      severity: critical
+      component: hardware
+      team: datacenter
+    annotations:
+      description: 'Hardware sensor {{ $labels.sensor }} alert on {{ $labels.instance }}'
+
+  - alert: NTPOutOfSync
+    expr: |
+      node_timex_sync_status != 1 or abs(node_timex_offset_seconds) > 0.1
+    for: 5m
+    labels:
+      severity: warning
+      component: time
+      team: infrastructure
+    annotations:
+      description: 'NTP out of sync by {{ $value | humanizeDuration }} on {{ $labels.instance }}'
+
+  - alert: BackupFailure
+    expr: |
+      time() - backup_last_success_timestamp_seconds > 86400  # 24h
+    for: 1h
+    labels:
+      severity: critical
+      component: backup
+      team: storage
+    annotations:
+      description: 'No successful backups in last 24 hours'
+
+  - alert: KernelPanicDetected
+    expr: |
+      node_kernel_panic_total > 0
+    labels:
+      severity: critical
+      component: kernel
+      team: sre
+    annotations:
+      description: 'Kernel panic detected on {{ $labels.instance }}'
+      impact: 'System may require manual intervention to recover'

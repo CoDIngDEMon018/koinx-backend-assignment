@@ -1,0 +1,270 @@
+# infrastructure/prometheus/alerts/api-alerts.rules.yml
+groups:
+- name: api-operational
+  rules:
+  - alert: HighErrorRate
+    expr: |
+      (sum by(service, env) (rate(http_requests_total{status=~"5..",job="api-server"}[5m])) 
+      / sum by(service, env) (rate(http_requests_total{job="api-server"}[5m]))) > 0.05
+    for: 5m
+    labels:
+      severity: critical
+      team: api
+      priority: p1
+      dashboard: api-health
+      playbook: "https://runbook.example.com/api-high-errors"
+    annotations:
+      summary: "High API error rate ({{ $value | humanizePercentage }})"
+      description: |
+        API error rate exceeding 5% for 5 minutes
+        Instance: {{ $labels.instance }}
+        Path: {{ $labels.path }}
+        Environment: {{ $labels.env }}
+
+  - alert: APIHighLatency
+    expr: |
+      histogram_quantile(0.99, 
+        sum by(le, route) (rate(http_request_duration_seconds_bucket{job="api-server"}[5m]))
+      > 5
+    for: 10m
+    labels:
+      severity: critical
+      team: api
+      dashboard: api-performance
+    annotations:
+      summary: "API 99th percentile latency critical ({{ $value | humanizeDuration }}s)"
+      description: "Route {{ $labels.route }} exceeding 5s latency threshold"
+
+  - alert: APIAuthorizationFailures
+    expr: |
+      rate(http_requests_total{status="403",job="api-server"}[5m]) > 5
+    for: 2m
+    labels:
+      severity: warning
+      team: security
+    annotations:
+      description: "High rate of authorization failures ({{ $value }} req/s)"
+
+  - alert: DatabaseConnectionPoolCritical
+    expr: |
+      (avg_over_time(mongodb_connections_available{job="api-server"}[5m]) 
+      / avg_over_time(mongodb_connections_current{job="api-server"}[5m])) < 0.1
+    for: 5m
+    labels:
+      severity: critical
+      team: database
+      priority: p0
+    annotations:
+      description: "Database connection pool 90% utilized ({{ $value | humanizePercentage }})"
+
+  - alert: APIDegradedPerformance
+    expr: |
+      (
+        histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="api-server"}[5m])) 
+        > 2
+      ) and (
+        rate(http_requests_total{job="api-server"}[5m]) 
+        < 100
+      )
+    for: 15m
+    labels:
+      severity: warning
+      team: api
+    annotations:
+      description: "High latency with low traffic - potential degradation"
+
+- name: worker-operational
+  rules:
+  - alert: WorkerProcessingLag
+    expr: |
+      time() - crypto_price_update_timestamp_seconds{job="worker-server"} > 300
+    for: 10m
+    labels:
+      severity: critical
+      team: data-pipeline
+      priority: p1
+      dashboard: worker-health
+    annotations:
+      summary: "Price data stale ({{ $value | humanizeDuration }} old)"
+      description: "{{ $labels.coin }} data update lagging beyond 5 minutes"
+
+  - alert: WorkerCircuitBreakerOpen
+    expr: |
+      worker_circuit_breaker_state{state="open"} == 1
+    for: 5m
+    labels:
+      severity: critical
+      team: data-pipeline
+      priority: p0
+    annotations:
+      playbook: "https://runbook.example.com/worker-circuit-breaker"
+      description: "Circuit breaker open for {{ $labels.service }}"
+
+  - alert: CoinGeckoRateLimitCritical
+    expr: |
+      coingecko_api_remaining_requests < 20
+    for: 2m
+    labels:
+      severity: critical
+      team: data-pipeline
+    annotations:
+      description: "CoinGecko API remaining requests critical: {{ $value }}"
+
+  - alert: DeadLetterQueueGrowth
+    expr: |
+      rate(worker_dead_letter_queue_size_total[1h]) > 0
+    for: 30m
+    labels:
+      severity: warning
+      team: data-pipeline
+    annotations:
+      description: "Dead letter queue accumulating messages"
+
+  - alert: WorkerBatchProcessingFailure
+    expr: |
+      rate(worker_jobs_failed_total{retryable="false"}[15m]) > 1
+    for: 5m
+    labels:
+      severity: critical
+      team: data-pipeline
+    annotations:
+      description: "Permanent failures in worker batch processing"
+
+- name: infrastructure
+  rules:
+  - alert: NodeMemoryPressureCritical
+    expr: |
+      (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.9
+    for: 5m
+    labels:
+      severity: critical
+      team: infra
+      priority: p0
+    annotations:
+      description: "Node memory usage critical ({{ $value | humanizePercentage }})"
+
+  - alert: CertificateExpiryImminent
+    expr: |
+      ssl_certificate_expiry_seconds < 86400 * 7  # 7 days
+    for: 1m
+    labels:
+      severity: critical
+      team: security
+    annotations:
+      description: "Certificate expiring in {{ $value | humanizeDuration }}"
+
+  - alert: NATSBackpressure
+    expr: |
+      nats_slow_consumers > 0
+    for: 2m
+    labels:
+      severity: warning
+      team: messaging
+    annotations:
+      description: "NATS experiencing slow consumer backpressure"
+
+  - alert: DiskSpaceCritical
+    expr: |
+      (node_filesystem_avail_bytes{mountpoint!~"tmpfs|overlay"} / node_filesystem_size_bytes{mountpoint!~"tmpfs|overlay"}) < 0.1
+    for: 10m
+    labels:
+      severity: critical
+      team: infra
+    annotations:
+      description: "Disk space critical on {{ $labels.mountpoint }} ({{ $value | humanizePercentage }} free)"
+
+  - alert: HighRedisLatency
+    expr: |
+      histogram_quantile(0.99, rate(redis_commands_duration_seconds_bucket[5m])) > 1
+    for: 5m
+    labels:
+      severity: warning
+      team: performance
+    annotations:
+      description: "Redis 99th percentile latency high ({{ $value | humanizeDuration }}s)"
+
+- name: business-slo
+  rules:
+  - alert: ErrorBudgetBurnRateCritical
+    expr: |
+      (
+        sum(rate(http_requests_total{status!~"2..",job="api-server"}[1h]))
+        / sum(rate(http_requests_total{job="api-server"}[1h]))
+      ) / 0.01 > 3  # Burning error budget 3x faster than allowed
+    for: 15m
+    labels:
+      severity: critical
+      team: business
+      priority: p0
+    annotations:
+      summary: "Error budget burn rate critical ({{ $value }}x threshold)"
+      playbook: "https://runbook.example.com/error-budget"
+
+  - alert: CacheEfficiencyDegraded
+    expr: |
+      (
+        rate(redis_cache_misses_total[1h])
+        / rate(redis_cache_requests_total[1h])
+      ) > 0.5
+    for: 1h
+    labels:
+      severity: warning
+      team: performance
+    annotations:
+      description: "Cache miss rate exceeding 50%"
+
+  - alert: UserTransactionFailureRate
+    expr: |
+      rate(user_transaction_failed_total[1h])
+      / rate(user_transaction_total[1h]) > 0.05
+    for: 30m
+    labels:
+      severity: critical
+      team: business
+    annotations:
+      description: "User transaction failure rate exceeding 5%"
+
+  - alert: DataConsistencyBreach
+    expr: |
+      abs(
+        api_price_usd{source="internal"} 
+        - external_price_usd{source="coingecko"}
+      ) / external_price_usd{source="coingecko"} > 0.05
+    for: 15m
+    labels:
+      severity: critical
+      team: data-integrity
+    annotations:
+      description: "Price discrepancy exceeding 5% between internal and external sources"
+
+- name: security
+  rules:
+  - alert: BruteforceAttemptsDetected
+    expr: |
+      rate(auth_failed_attempts_total[5m]) > 10
+    for: 2m
+    labels:
+      severity: critical
+      team: security
+    annotations:
+      description: "Potential bruteforce attack detected ({{ $value }} attempts/min)"
+
+  - alert: UnauthorizedAccessAttempts
+    expr: |
+      rate(http_requests_total{status="401"}[5m]) > 5
+    for: 5m
+    labels:
+      severity: warning
+      team: security
+    annotations:
+      description: "High rate of unauthorized access attempts"
+
+  - alert: DataExportAnomaly
+    expr: |
+      rate(data_export_volume_bytes[1h]) / rate(data_export_volume_bytes[6h] offset 1h) > 3
+    for: 15m
+    labels:
+      severity: warning
+      team: security
+    annotations:
+      description: "Unusual data export volume increase detected"

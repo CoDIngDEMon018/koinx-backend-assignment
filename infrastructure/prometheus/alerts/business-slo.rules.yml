@@ -1,0 +1,151 @@
+# infrastructure/prometheus/alerts/business-slo.rules.yml
+groups:
+- name: business-slo
+  rules:
+  - alert: APIAvailabilityBelowSLO
+    expr: |
+      (
+        sum(rate(http_requests_total{status!~"5..",job="api-server"}[1h])) 
+        / sum(rate(http_requests_total{job="api-server"}[1h]))
+      ) < 0.995  # 99.5% availability SLO
+    for: 30m
+    labels:
+      severity: critical
+      team: business
+      dashboard: api-slo
+      priority: p1
+      slo: availability
+    annotations:
+      description: "API availability at {{ $value | humanizePercentage }} (SLO: 99.5%)"
+      summary: "API availability below SLO threshold"
+      runbook: "https://runbook.example.com/api-slo"
+      impact: "User transactions may be failing"
+      playbook: "https://playbook.example.com/api-availability"
+
+  - alert: ErrorBudgetBurnRateCritical
+    expr: |
+      (
+        (sum(rate(http_requests_total{status!~"2..",job="api-server"}[1h]))
+        / sum(rate(http_requests_total{job="api-server"}[1h]))
+        ) 
+        / (1 - 0.995)  # Error budget based on 99.5% SLO
+      ) > 2  # Burning error budget 2x faster than allowed
+    for: 30m
+    labels:
+      severity: critical
+      team: business
+      dashboard: error-budget
+      slo: error-budget
+      priority: p0
+    annotations:
+      description: "Error budget burn rate at {{ $value | humanize }}x allowed rate"
+      summary: "Critical error budget burn rate"
+      runbook: "https://runbook.example.com/error-budget"
+      impact: "Risk of SLO violation within alerting window"
+
+  - alert: CheckoutLatencySLO
+    expr: |
+      histogram_quantile(0.95, 
+        sum by (le, endpoint) (
+          rate(checkout_request_duration_seconds_bucket{endpoint="checkout"}[5m])
+        )
+      ) > 3  # 95th percentile < 3s SLO
+    for: 15m
+    labels:
+      severity: warning
+      team: business
+      dashboard: checkout-performance
+      slo: latency
+      priority: p2
+    annotations:
+      description: "Checkout latency p95 at {{ $value | humanizeDuration }} (SLO: 3s)"
+      summary: "Checkout latency exceeding SLO"
+      runbook: "https://runbook.example.com/checkout-latency"
+      impact: "Potential cart abandonment risk"
+
+  - alert: DataFreshnessSLO
+    expr: |
+      max by (coin) (
+        time() - crypto_price_update_timestamp_seconds{job="worker-server"}
+      ) > 300  # 5 minute freshness SLO
+    for: 10m
+    labels:
+      severity: critical
+      team: data-pipeline
+      dashboard: data-freshness
+      slo: freshness
+      priority: p1
+    annotations:
+      description: "{{ $labels.coin }} data age: {{ $value | humanizeDuration }} (SLO: 5m)"
+      summary: "Cryptocurrency price data stale"
+      runbook: "https://runbook.example.com/data-freshness"
+      impact: "Outdated pricing may affect transactions"
+
+  - alert: PaymentSuccessRateSLO
+    expr: |
+      (
+        sum(rate(payment_attempts_total{status="success"}[1h])
+        / sum(rate(payment_attempts_total[1h]))
+      ) < 0.99  # 99% success rate SLO
+    for: 15m
+    labels:
+      severity: critical
+      team: payments
+      dashboard: payment-processing
+      slo: success-rate
+      priority: p0
+    annotations:
+      description: "Payment success rate at {{ $value | humanizePercentage }} (SLO: 99%)"
+      summary: "Payment processing degraded"
+      runbook: "https://runbook.example.com/payment-errors"
+      impact: "Direct revenue impact"
+
+  - alert: PortfolioValueAccuracy
+    expr: |
+      abs(
+        (portfolio_calculated_value - portfolio_actual_value)
+        / portfolio_actual_value
+      ) > 0.01  # 1% accuracy threshold
+    for: 1h
+    labels:
+      severity: warning
+      team: financial
+      dashboard: portfolio-accuracy
+      slo: accuracy
+    annotations:
+      description: "Portfolio calculation discrepancy: {{ $value | humanizePercentage }}"
+      summary: "Portfolio value calculation inaccuracy"
+      runbook: "https://runbook.example.com/portfolio-accuracy"
+      impact: "Potential reporting inaccuracies"
+
+  - alert: ThirdPartyDependencyHealth
+    expr: |
+      avg_over_time(third_party_api_health{service=~"payment|pricing|identity"}[5m]) < 0.95
+    for: 20m
+    labels:
+      severity: critical
+      team: reliability
+      dashboard: dependencies
+      slo: dependencies
+    annotations:
+      description: "{{ $labels.service }} health at {{ $value | humanizePercentage }}"
+      summary: "Critical dependency service degraded"
+      runbook: "https://runbook.example.com/dependency-health"
+      impact: "Multiple user-facing features affected"
+
+  - alert: UserBalanceRefreshLatency
+    expr: |
+      histogram_quantile(0.99,
+        rate(user_balance_refresh_duration_seconds_bucket[5m])
+      ) > 10  # 99th percentile < 10s SLO
+    for: 30m
+    labels:
+      severity: warning
+      team: user-experience
+      dashboard: user-balances
+      slo: refresh-latency
+    annotations:
+      description: "Balance refresh p99 latency: {{ $value | humanizeDuration }}"
+      summary: "User balance refresh latency high"
+      runbook: "https://runbook.example.com/balance-latency"
+      impact: "Poor user experience during balance checks"

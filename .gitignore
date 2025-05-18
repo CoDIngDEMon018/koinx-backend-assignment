@@ -1,0 +1,54 @@
+# crypto-stats-system/.gitignore
+
+# IDE and Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment Files
+.env
+.env.local
+.env.*.local
+
+# Dependency Directories (root level)
+node_modules/
+
+# Build Artifacts
+dist/
+build/
+out/
+.cache/
+
+# Local Development Files
+docker-compose.override.yml
+docker-compose.env
+docker-dev/
+
+# Logs (root level)
+*.log
+logs/
+
+# Temporary Files
+*.tmp
+*.temp
+
+# Testing
+coverage/
+.nyc_output/
+
+# Package Manager Files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Documentation
+_site/
+.sass-cache/
+.jekyll-cache/
