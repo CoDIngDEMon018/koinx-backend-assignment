@@ -14,6 +14,13 @@ import { initNatsConnection } from './src/services/natsService.js';
 import logger from './src/utils/logger.js';
 import prometheus from 'prom-client';
 import responseTime from 'response-time';
+import { rateLimit } from 'express-rate-limit';
+import { validateEnv } from './src/config/env.js';
+import { metrics } from './src/utils/metrics.js';
+import { metricsMiddleware } from './src/middleware/metricsMiddleware.js';
+
+// Validate environment variables
+validateEnv();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,7 +29,7 @@ const PORT = process.env.PORT || 3000;
 app.use(helmet());
 app.use(cors({
   origin: process.env.CORS_ORIGIN || '*',
-  methods: ['GET'],
+  methods: ['GET', 'POST'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
@@ -31,6 +38,20 @@ app.use(rateLimiter);
 
 // API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerOptions));
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000,
+  max: process.env.RATE_LIMIT_MAX || 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many requests from this IP, please try again later'
+});
+
+app.use(limiter);
+
+// Metrics middleware
+app.use(metricsMiddleware);
 
 // Routes
 app.use('/health', healthRoutes);
@@ -176,14 +197,14 @@ app.use((req, res, next) => {
   next();
 });
 
-// Secure metrics endpoint
+// Metrics endpoint
 app.get('/metrics', async (req, res) => {
   try {
-    res.set('Content-Type', register.contentType);
-    res.end(await register.metrics());
+    res.set('Content-Type', metrics.register.contentType);
+    res.end(await metrics.register.metrics());
   } catch (error) {
-    console.error('Metrics collection error:', error);
-    res.status(500).end('Internal Server Error');
+    logger.error('Error generating metrics', { error: error.message });
+    res.status(500).end();
   }
 });
 
@@ -222,3 +243,5 @@ async function startServer() {
 }
 
 startServer();
+
+export default app;
