@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import cryptoRoutes from './src/routes/cryptoRoutes.js';
 import { startNatsSubscriber } from './src/services/natsService.js';
+import { errorHandler } from './src/middleware/errorHandler.js';
 import logger from './src/utils/logger.js';
 import prometheus from 'prom-client';
 import responseTime from 'response-time';
@@ -16,8 +17,35 @@ const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/crypto-stats';
 
 // Middleware
-app.use(cors());
-app.use(helmet());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN,
+  methods: process.env.CORS_METHODS?.split(',') || ['GET'],
+  allowedHeaders: process.env.CORS_ALLOWED_HEADERS?.split(',') || ['Content-Type']
+}));
+
+app.use(helmet({
+  hsts: {
+    maxAge: parseInt(process.env.HELMET_HSTS_MAX_AGE) || 31536000,
+    includeSubDomains: process.env.HELMET_HSTS_INCLUDE_SUBDOMAINS === 'true',
+    preload: process.env.HELMET_HSTS_PRELOAD === 'true'
+  },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"]
+    }
+  },
+  expectCt: {
+    maxAge: parseInt(process.env.HELMET_EXPECT_CT_MAX_AGE) || 86400
+  },
+  frameguard: {
+    action: process.env.HELMET_FRAMEGUARD_ACTION || 'deny'
+  },
+  xssFilter: process.env.HELMET_XSS_FILTER === 'true',
+  noSniff: process.env.HELMET_NO_SNIFF === 'true',
+  referrerPolicy: { policy: process.env.HELMET_REFERRER_POLICY || 'no-referrer' }
+}));
+
 app.use(express.json());
 
 // Routes
@@ -182,11 +210,8 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  logger.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error' });
-});
+// Error handling middleware (should be last)
+app.use(errorHandler);
 
 // Connect to MongoDB and start the server
 async function startServer() {
