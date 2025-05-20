@@ -57,4 +57,4 @@ export const swaggerOptions = {
     },
   },
   apis: ['./src/routes/*.js'], // Path to the API routes
-}; 
+};
