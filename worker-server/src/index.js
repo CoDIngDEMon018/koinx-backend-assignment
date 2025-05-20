@@ -9,15 +9,21 @@ const NATS_URL = process.env.NATS_URL || 'nats://localhost:4222';
 const SUBJECT = 'crypto.update';
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 5000; // 5 seconds
+const CRON_SCHEDULE = process.env.CRON_SCHEDULE || '*/15 * * * *';
 
 let nc = null;
 let isConnected = false;
 
 async function connectToNats() {
   try {
-    nc = await connect({ servers: NATS_URL });
+    nc = await connect({
+      servers: NATS_URL,
+      reconnect: true,
+      maxReconnectAttempts: -1,
+      reconnectTimeWait: 2000
+    });
     isConnected = true;
-    logger.info('Connected to NATS server');
+    logger.info(`Connected to NATS server at ${nc.getServer()}`);
     return true;
   } catch (error) {
     logger.error('Error connecting to NATS:', error);
@@ -34,7 +40,10 @@ async function publishUpdateEvent() {
   let retries = 0;
   while (retries < MAX_RETRIES) {
     try {
-      const message = { trigger: 'update' };
+      const message = { 
+        trigger: 'update',
+        timestamp: new Date().toISOString()
+      };
       await nc.publish(SUBJECT, JSON.stringify(message));
       logger.info('Published update event to NATS');
       return;
@@ -72,13 +81,12 @@ async function startWorker() {
       }
     });
 
-    // Schedule the job to run every 15 minutes
-    const schedule = process.env.CRON_SCHEDULE || '*/15 * * * *';
-    cron.schedule(schedule, () => {
+    // Schedule the job
+    cron.schedule(CRON_SCHEDULE, () => {
       publishUpdateEvent();
     });
 
-    logger.info('Worker server started');
+    logger.info(`Worker server started with schedule: ${CRON_SCHEDULE}`);
   } catch (error) {
     logger.error('Error starting worker server:', error);
     process.exit(1);

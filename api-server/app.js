@@ -2,54 +2,39 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
-import cryptoRoutes from './src/routes/cryptoRoutes.js';
-import { startNatsSubscriber } from './src/services/natsService.js';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerOptions } from './src/config/swagger.js';
 import { errorHandler } from './src/middleware/errorHandler.js';
+import { validateRequest } from './src/middleware/validator.js';
+import { rateLimiter } from './src/middleware/rateLimiter.js';
+import { timeout } from './src/middleware/timeout.js';
+import cryptoRoutes from './src/routes/cryptoRoutes.js';
+import healthRoutes from './src/routes/healthRoutes.js';
+import { initNatsConnection } from './src/services/natsService.js';
 import logger from './src/utils/logger.js';
 import prometheus from 'prom-client';
 import responseTime from 'response-time';
 
-dotenv.config();
-
 const app = express();
 const PORT = process.env.PORT || 3000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/crypto-stats';
 
 // Middleware
+app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN,
-  methods: process.env.CORS_METHODS?.split(',') || ['GET'],
-  allowedHeaders: process.env.CORS_ALLOWED_HEADERS?.split(',') || ['Content-Type']
+  origin: process.env.CORS_ORIGIN || '*',
+  methods: ['GET'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
-
-app.use(helmet({
-  hsts: {
-    maxAge: parseInt(process.env.HELMET_HSTS_MAX_AGE) || 31536000,
-    includeSubDomains: process.env.HELMET_HSTS_INCLUDE_SUBDOMAINS === 'true',
-    preload: process.env.HELMET_HSTS_PRELOAD === 'true'
-  },
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"]
-    }
-  },
-  expectCt: {
-    maxAge: parseInt(process.env.HELMET_EXPECT_CT_MAX_AGE) || 86400
-  },
-  frameguard: {
-    action: process.env.HELMET_FRAMEGUARD_ACTION || 'deny'
-  },
-  xssFilter: process.env.HELMET_XSS_FILTER === 'true',
-  noSniff: process.env.HELMET_NO_SNIFF === 'true',
-  referrerPolicy: { policy: process.env.HELMET_REFERRER_POLICY || 'no-referrer' }
-}));
-
 app.use(express.json());
+app.use(timeout(5000));
+app.use(rateLimiter);
+
+// API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerOptions));
 
 // Routes
-app.use('/api', cryptoRoutes);
+app.use('/health', healthRoutes);
+app.use('/api', validateRequest, cryptoRoutes);
 
 // Create a custom metrics registry
 const register = new prometheus.Registry();
@@ -210,23 +195,28 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Error handling middleware (should be last)
+// Error handling
 app.use(errorHandler);
 
-// Connect to MongoDB and start the server
+// Initialize services
 async function startServer() {
   try {
-    await mongoose.connect(MONGODB_URI);
+    // Connect to MongoDB
+    await mongoose.connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
     logger.info('Connected to MongoDB');
 
-    // Start NATS subscriber
-    await startNatsSubscriber();
+    // Initialize NATS connection
+    await initNatsConnection();
 
+    // Start server
     app.listen(PORT, () => {
-      logger.info(`API server listening on port ${PORT}`);
+      logger.info(`Server running on port ${PORT}`);
     });
   } catch (error) {
-    logger.error('Error starting server:', error);
+    logger.error('Failed to start server:', error);
     process.exit(1);
   }
 }

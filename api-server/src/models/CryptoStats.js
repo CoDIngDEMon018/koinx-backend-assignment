@@ -1,18 +1,21 @@
 import mongoose from 'mongoose';
 
-const cryptoSchema = new mongoose.Schema({
+const cryptoStatsSchema = new mongoose.Schema({
   coinId: {
     type: String,
     required: true,
-    enum: ['bitcoin', 'ethereum', 'matic-network']
+    enum: ['bitcoin', 'ethereum', 'matic-network'],
+    index: true
   },
   price: {
     type: Number,
-    required: true
+    required: true,
+    min: 0
   },
   marketCap: {
     type: Number,
-    required: true
+    required: true,
+    min: 0
   },
   change24h: {
     type: Number,
@@ -20,11 +23,22 @@ const cryptoSchema = new mongoose.Schema({
   },
   timestamp: {
     type: Date,
-    default: Date.now
+    default: Date.now,
+    index: true
   }
+}, {
+  timestamps: true
 });
 
-// Create compound index for efficient querying
-cryptoSchema.index({ coinId: 1, timestamp: -1 });
+// Compound index for efficient querying of latest stats
+cryptoStatsSchema.index({ coinId: 1, timestamp: -1 });
 
-export const CryptoStats = mongoose.model('CryptoStats', cryptoSchema); 
+// Index for deviation calculation
+cryptoStatsSchema.index({ coinId: 1, timestamp: -1 }, { 
+  partialFilterExpression: { price: { $exists: true } }
+});
+
+// Add TTL index to automatically remove old data (optional)
+// cryptoStatsSchema.index({ timestamp: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 }); // 30 days
+
+export const CryptoStats = mongoose.model('CryptoStats', cryptoStatsSchema); 
