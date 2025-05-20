@@ -1,5 +1,27 @@
+import express from 'express';
+import mongoose from 'mongoose';
+import cors from 'cors';
+import helmet from 'helmet';
+import dotenv from 'dotenv';
+import cryptoRoutes from './src/routes/cryptoRoutes.js';
+import { startNatsSubscriber } from './src/services/natsService.js';
+import logger from './src/utils/logger.js';
 import prometheus from 'prom-client';
 import responseTime from 'response-time';
+
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/crypto-stats';
+
+// Middleware
+app.use(cors());
+app.use(helmet());
+app.use(express.json());
+
+// Routes
+app.use('/api', cryptoRoutes);
 
 // Create a custom metrics registry
 const register = new prometheus.Registry();
@@ -159,3 +181,29 @@ app.get('/health', (req, res) => {
     metrics: register.getMetricsAsJSON().map(m => m.name)
   });
 });
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  logger.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+// Connect to MongoDB and start the server
+async function startServer() {
+  try {
+    await mongoose.connect(MONGODB_URI);
+    logger.info('Connected to MongoDB');
+
+    // Start NATS subscriber
+    await startNatsSubscriber();
+
+    app.listen(PORT, () => {
+      logger.info(`API server listening on port ${PORT}`);
+    });
+  } catch (error) {
+    logger.error('Error starting server:', error);
+    process.exit(1);
+  }
+}
+
+startServer();
