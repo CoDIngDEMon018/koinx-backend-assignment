@@ -37,6 +37,5 @@ ts-jest@29.1.1
 
 # Optional Dependencies
 redis@4.6.10  # For caching (if implemented)
-prometheus-client@0.5.1  # For additional metrics
 compression@1.7.4  # For response compression
 morgan@1.10.0  # For HTTP request logging 
