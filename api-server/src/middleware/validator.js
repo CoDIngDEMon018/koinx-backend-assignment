@@ -2,21 +2,42 @@ import { AppError } from './errorHandler.js';
 
 const SUPPORTED_COINS = ['bitcoin', 'ethereum', 'matic-network'];
 
-export const validateCoin = (req, res, next) => {
-  const { coin } = req.query;
-  
-  if (!coin) {
-    return next(new AppError('Coin parameter is required', 400));
-  }
+export const validateRequest = (req, res, next) => {
+  try {
+    // Validate coin parameter for /stats and /deviation endpoints
+    if (req.path === '/stats' || req.path === '/deviation') {
+      const { coin } = req.query;
+      
+      if (!coin) {
+        throw new AppError('Coin parameter is required', 400);
+      }
 
-  if (!SUPPORTED_COINS.includes(coin)) {
-    return next(new AppError(
-      `Invalid coin. Supported coins: ${SUPPORTED_COINS.join(', ')}`,
-      400
-    ));
-  }
+      if (!SUPPORTED_COINS.includes(coin.toLowerCase())) {
+        throw new AppError(
+          `Invalid coin. Supported coins are: ${SUPPORTED_COINS.join(', ')}`,
+          400
+        );
+      }
 
-  next();
+      // Normalize coin parameter
+      req.query.coin = coin.toLowerCase();
+    }
+
+    // Validate request headers
+    const contentType = req.get('Content-Type');
+    if (req.method === 'POST' && contentType !== 'application/json') {
+      throw new AppError('Content-Type must be application/json', 415);
+    }
+
+    // Validate request body for POST requests
+    if (req.method === 'POST' && Object.keys(req.body).length === 0) {
+      throw new AppError('Request body cannot be empty', 400);
+    }
+
+    next();
+  } catch (error) {
+    next(error);
+  }
 };
 
 export const validatePagination = (req, res, next) => {
