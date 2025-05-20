@@ -7,25 +7,75 @@ dotenv.config();
 
 const NATS_URL = process.env.NATS_URL || 'nats://localhost:4222';
 const SUBJECT = 'crypto.update';
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 5000; // 5 seconds
 
-async function publishUpdateEvent(nc) {
+let nc = null;
+let isConnected = false;
+
+async function connectToNats() {
   try {
-    const message = { trigger: 'update' };
-    await nc.publish(SUBJECT, JSON.stringify(message));
-    logger.info('Published update event to NATS');
+    nc = await connect({ servers: NATS_URL });
+    isConnected = true;
+    logger.info('Connected to NATS server');
+    return true;
   } catch (error) {
-    logger.error('Error publishing update event:', error);
+    logger.error('Error connecting to NATS:', error);
+    return false;
   }
+}
+
+async function publishUpdateEvent() {
+  if (!isConnected) {
+    logger.error('Not connected to NATS server');
+    return;
+  }
+
+  let retries = 0;
+  while (retries < MAX_RETRIES) {
+    try {
+      const message = { trigger: 'update' };
+      await nc.publish(SUBJECT, JSON.stringify(message));
+      logger.info('Published update event to NATS');
+      return;
+    } catch (error) {
+      retries++;
+      logger.error(`Error publishing update event (attempt ${retries}/${MAX_RETRIES}):`, error);
+      
+      if (retries < MAX_RETRIES) {
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      }
+    }
+  }
+
+  logger.error('Failed to publish update event after maximum retries');
 }
 
 async function startWorker() {
   try {
-    const nc = await connect({ servers: NATS_URL });
-    logger.info('Connected to NATS server');
+    // Initial connection
+    const connected = await connectToNats();
+    if (!connected) {
+      throw new Error('Failed to connect to NATS server');
+    }
+
+    // Handle NATS connection errors
+    nc.on('error', async (error) => {
+      logger.error('NATS connection error:', error);
+      isConnected = false;
+      
+      // Attempt to reconnect
+      const reconnected = await connectToNats();
+      if (!reconnected) {
+        logger.error('Failed to reconnect to NATS server');
+        process.exit(1);
+      }
+    });
 
     // Schedule the job to run every 15 minutes
-    cron.schedule('*/15 * * * *', () => {
-      publishUpdateEvent(nc);
+    const schedule = process.env.CRON_SCHEDULE || '*/15 * * * *';
+    cron.schedule(schedule, () => {
+      publishUpdateEvent();
     });
 
     logger.info('Worker server started');
@@ -34,5 +84,22 @@ async function startWorker() {
     process.exit(1);
   }
 }
+
+// Handle process termination
+process.on('SIGTERM', async () => {
+  logger.info('Received SIGTERM signal');
+  if (nc) {
+    await nc.drain();
+  }
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  logger.info('Received SIGINT signal');
+  if (nc) {
+    await nc.drain();
+  }
+  process.exit(0);
+});
 
 startWorker(); 

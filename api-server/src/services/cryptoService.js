@@ -1,9 +1,23 @@
 import axios from 'axios';
 import { CryptoStats } from '../models/CryptoStats.js';
 import logger from '../utils/logger.js';
+import { AppError } from '../middleware/errorHandler.js';
 
 const COINGECKO_API = 'https://api.coingecko.com/api/v3';
 const SUPPORTED_COINS = ['bitcoin', 'ethereum', 'matic-network'];
+
+function validateCoinGeckoResponse(data, coinId) {
+  if (!data || !data[coinId]) {
+    throw new AppError(`No data available for ${coinId}`, 404);
+  }
+
+  const coinData = data[coinId];
+  if (!coinData.usd || !coinData.usd_market_cap || coinData.usd_24h_change === undefined) {
+    throw new AppError(`Incomplete data for ${coinId}`, 502);
+  }
+
+  return coinData;
+}
 
 export async function storeCryptoStats() {
   try {
@@ -13,26 +27,43 @@ export async function storeCryptoStats() {
         vs_currencies: 'usd',
         include_market_cap: true,
         include_24hr_change: true
-      }
+      },
+      timeout: 5000 // 5 second timeout
     });
 
     const stats = [];
     for (const coinId of SUPPORTED_COINS) {
-      const coinData = response.data[coinId];
-      if (coinData) {
+      try {
+        const coinData = validateCoinGeckoResponse(response.data, coinId);
         stats.push({
           coinId,
           price: coinData.usd,
           marketCap: coinData.usd_market_cap,
           change24h: coinData.usd_24h_change
         });
+      } catch (error) {
+        logger.error(`Error processing data for ${coinId}:`, error);
+        // Continue with other coins even if one fails
+        continue;
       }
+    }
+
+    if (stats.length === 0) {
+      throw new AppError('Failed to process any coin data', 502);
     }
 
     await CryptoStats.insertMany(stats);
     logger.info('Successfully stored crypto stats');
     return stats;
   } catch (error) {
+    if (error.response) {
+      // CoinGecko API error
+      logger.error('CoinGecko API error:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+      throw new AppError('Error fetching data from CoinGecko', 502);
+    }
     logger.error('Error storing crypto stats:', error);
     throw error;
   }
@@ -45,7 +76,7 @@ export async function getLatestStats(coinId) {
       .lean();
 
     if (!stats) {
-      throw new Error(`No stats found for ${coinId}`);
+      throw new AppError(`No stats found for ${coinId}`, 404);
     }
 
     return {
@@ -68,7 +99,7 @@ export async function getPriceDeviation(coinId) {
       .lean();
 
     if (stats.length === 0) {
-      throw new Error(`No stats found for ${coinId}`);
+      throw new AppError(`No stats found for ${coinId}`, 404);
     }
 
     const prices = stats.map(stat => stat.price);
