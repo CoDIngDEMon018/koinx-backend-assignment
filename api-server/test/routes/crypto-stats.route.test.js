@@ -1,10 +1,10 @@
 // api-server/test/routes/crypto-stats.route.test.js
-import request from 'supertest';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import mongoose from 'mongoose';
-import app from '../../src/app.js';
-import { connectDatabase } from '../../src/config/database.js';
-import { mockNATS } from '../mocks/nats.mock.js';
+const request = require('supertest');
+const { MongoMemoryServer } = require('mongodb-memory-server');
+const mongoose = require('mongoose');
+const app = require('../../src/app.js');
+const { connectDatabase } = require('../../src/config/database.js');
+const { mockNATS } = require('../mocks/nats.mock.js');
 
 // Mock NATS connection before all tests
 jest.mock('../../src/config/nats.js', () => mockNATS);

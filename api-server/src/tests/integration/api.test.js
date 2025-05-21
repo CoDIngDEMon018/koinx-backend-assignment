@@ -1,7 +1,7 @@
-import request from 'supertest';
-import { jest } from '@jest/globals';
-import app from '../../app.js';
-import { CryptoStats } from '../../models/CryptoStats.js';
+const request = require('supertest');
+const { jest } = require('@jest/globals');
+const app = require('../../app.js');
+const { CryptoStats } = require('../../models/CryptoStats.js');
 
 // Mock dependencies
 jest.mock('../../models/CryptoStats.js');
