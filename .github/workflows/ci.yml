@@ -12,6 +12,9 @@ jobs:
     strategy:
       matrix:
         node-version: [16.x, 18.x]
+    defaults:
+      run:
+        working-directory: crypto-stats-system/api-server
     steps:
       - uses: actions/checkout@v4
 
@@ -23,11 +26,9 @@ jobs:
           cache-dependency-path: crypto-stats-system/api-server/package-lock.json
 
       - name: Install dependencies
-        working-directory: crypto-stats-system/api-server
         run: npm ci
 
       - name: Run tests
-        working-directory: crypto-stats-system/api-server
         run: npm test
 
       - name: Run lint
