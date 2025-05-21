@@ -7,31 +7,32 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         node-version: [16.x, 18.x]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+          cache: npm
+          cache-dependency-path: ./crypto-stats-system/api-server/package-lock.json
 
-      - name: Install API Server Dependencies
+      - name: Install dependencies
         working-directory: crypto-stats-system/api-server
         run: npm ci
+
+      - name: Run tests
+        working-directory: crypto-stats-system/api-server
+        run: npm test
 
       - name: Install Worker Server Dependencies
         working-directory: crypto-stats-system/worker-server
         run: npm ci
-
-      - name: Run API Server Tests
-        working-directory: crypto-stats-system/api-server
-        run: npm test
 
       - name: Run Worker Server Tests
         working-directory: crypto-stats-system/worker-server
