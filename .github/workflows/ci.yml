@@ -12,39 +12,35 @@ jobs:
     strategy:
       matrix:
         node-version: [16.x, 18.x]
-
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v3
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-    
-    - name: Install API Server Dependencies
-      run: |
-        cd api-server
-        npm ci
-    
-    - name: Install Worker Server Dependencies
-      run: |
-        cd worker-server
-        npm ci
-    
-    - name: Run API Server Tests
-      run: |
-        cd api-server
-        npm test
-    
-    - name: Run Worker Server Tests
-      run: |
-        cd worker-server
-        npm test
-    
-    - name: Run Linting
-      run: |
-        cd api-server
-        npm run lint
-        cd ../worker-server
-        npm run lint 
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install API Server Dependencies
+        working-directory: crypto-stats-system/api-server
+        run: npm ci
+
+      - name: Install Worker Server Dependencies
+        working-directory: crypto-stats-system/worker-server
+        run: npm ci
+
+      - name: Run API Server Tests
+        working-directory: crypto-stats-system/api-server
+        run: npm test
+
+      - name: Run Worker Server Tests
+        working-directory: crypto-stats-system/worker-server
+        run: npm test
+
+      - name: Run API Server Lint
+        working-directory: crypto-stats-system/api-server
+        run: npm run lint
+
+      - name: Run Worker Server Lint
+        working-directory: crypto-stats-system/worker-server
+        run: npm run lint
