@@ -30,6 +30,7 @@ out/
 docker-compose.override.yml
 docker-compose.env
 docker-dev/
+mongodb-data/
 
 # Logs (root level)
 *.log

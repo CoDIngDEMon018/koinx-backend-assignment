@@ -18,6 +18,7 @@ import { rateLimit } from 'express-rate-limit';
 import { validateEnv } from './src/config/env.js';
 import { metrics } from './src/utils/metrics.js';
 import { metricsMiddleware } from './src/middleware/metricsMiddleware.js';
+import { globalLimiter } from './src/middleware/rateLimiter.js';
 
 // Validate environment variables
 validateEnv();
@@ -34,7 +35,7 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(timeout(5000));
-app.use(rateLimiter);
+app.use(globalLimiter);
 
 // API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerOptions));
