@@ -1,12 +1,13 @@
 // api-server/src/server.js
 import { connectDatabase, disconnectDatabase } from './config/database.js';
 import { initNATS, closeNATS } from './config/nats.js';
-import app from './app.js';
+// import app from './app.js';
 import { logger } from './config/logger.js';
 import cluster from 'cluster';
 import process from 'process';
 import os from 'os';
 import http from 'http';
+import app from '../app.js';
 
 const PORT = process.env.PORT || 3000;
 const HEALTH_PORT = process.env.HEALTH_PORT || 3001;

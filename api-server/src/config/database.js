@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { logger } from './logger.js';
+import logger from './logger.js';
 
 // Global configuration for production safety
 mongoose.set('strictQuery', true); // Enable strict query mode

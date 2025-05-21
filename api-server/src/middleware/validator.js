@@ -40,21 +40,40 @@ export const validateRequest = (req, res, next) => {
   }
 };
 
-export const validatePagination = (req, res, next) => {
-  const { limit = '100', page = '1' } = req.query;
+export const validateCoin = (req, res, next) => {
+  const { coin } = req.query;
   
-  const parsedLimit = parseInt(limit, 10);
-  const parsedPage = parseInt(page, 10);
-
-  if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
-    return next(new AppError('Limit must be between 1 and 100', 400));
+  if (!coin) {
+    throw new AppError('Coin parameter is required', 400);
   }
 
-  if (isNaN(parsedPage) || parsedPage < 1) {
-    return next(new AppError('Page must be greater than 0', 400));
+  const validCoins = ['bitcoin', 'ethereum', 'matic-network'];
+  if (!validCoins.includes(coin.toLowerCase())) {
+    throw new AppError(`Invalid coin. Supported coins are: ${validCoins.join(', ')}`, 400);
   }
 
-  req.query.limit = parsedLimit;
-  req.query.page = parsedPage;
+  next();
+};
+
+export const validatePagination = (req, res, next) => {
+  const { limit = '100', offset = '0' } = req.query;
+  
+  const limitNum = parseInt(limit);
+  const offsetNum = parseInt(offset);
+
+  if (isNaN(limitNum) || limitNum < 1 || limitNum > 1000) {
+    throw new AppError('Limit must be a number between 1 and 1000', 400);
+  }
+
+  if (isNaN(offsetNum) || offsetNum < 0) {
+    throw new AppError('Offset must be a non-negative number', 400);
+  }
+
+  // Add validated values to request for use in route handlers
+  req.pagination = {
+    limit: limitNum,
+    offset: offsetNum
+  };
+
   next();
 }; 

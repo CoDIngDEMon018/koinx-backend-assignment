@@ -1,6 +1,6 @@
 // api-server/src/config/nats.js
 import { connect, StringCodec, JSONCodec, headers } from 'nats';
-import { logger } from './logger.js';
+import logger from './logger.js';
 import { storeCryptoStats } from '../services/statsService.js';
 
 const sc = StringCodec();
