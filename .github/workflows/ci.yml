@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
-          cache-dependency-path: ./crypto-stats-system/api-server/package-lock.json
+          cache-dependency-path: crypto-stats-system/api-server/package-lock.json
 
       - name: Install dependencies
         working-directory: crypto-stats-system/api-server
@@ -47,7 +47,7 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
-          cache-dependency-path: ./crypto-stats-system/worker-server/package-lock.json
+          cache-dependency-path: crypto-stats-system/worker-server/package-lock.json
 
       - name: Install dependencies
         working-directory: crypto-stats-system/worker-server
