@@ -1,14 +1,14 @@
 import express from 'express';
 import mongoose from 'mongoose';
-import { natsClient } from '../services/natsService.js';
-import logger from '../utils/logger.js';
+import { getNatsClient } from '../services/natsService.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
 router.get('/health', async (req, res) => {
   try {
     const mongoStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-    const natsStatus = natsClient.isConnected() ? 'connected' : 'disconnected';
+    const natsStatus = getNatsClient().isConnected() ? 'connected' : 'disconnected';
     
     const status = mongoStatus === 'connected' && natsStatus === 'connected' ? 'healthy' : 'unhealthy';
     
@@ -37,7 +37,7 @@ router.get('/health', async (req, res) => {
 router.get('/ready', async (req, res) => {
   try {
     const mongoStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-    const natsStatus = natsClient.isConnected() ? 'connected' : 'disconnected';
+    const natsStatus = getNatsClient().isConnected() ? 'connected' : 'disconnected';
     
     const isReady = mongoStatus === 'connected' && natsStatus === 'connected';
     
@@ -59,6 +59,45 @@ router.get('/ready', async (req, res) => {
       status: 'error',
       message: 'Readiness check failed',
       timestamp: new Date().toISOString()
+    });
+  }
+});
+
+router.get('/', (req, res) => {
+  const health = {
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
+  };
+
+  try {
+    const natsClient = getNatsClient();
+    health.nats = {
+      status: 'connected',
+      server: natsClient.getServer()
+    };
+  } catch (error) {
+    health.nats = {
+      status: 'disconnected',
+      error: error.message
+    };
+  }
+
+  res.json(health);
+});
+
+router.get('/nats', async (req, res) => {
+  try {
+    const natsClient = getNatsClient();
+    await natsClient.publish('health.check', { timestamp: Date.now() });
+    res.json({ status: 'OK', message: 'NATS connection is active' });
+  } catch (error) {
+    logger.error('NATS health check failed:', error);
+    res.status(500).json({ 
+      status: 'ERROR', 
+      message: 'NATS connection failed', 
+      error: error.message 
     });
   }
 });

@@ -1,51 +1,73 @@
-import { connect } from 'nats';
-import logger from '../utils/logger.js';
+import { connect, JSONCodec } from 'nats';
+import logger from '../config/logger.js';
 import { storeCryptoStats } from './cryptoService.js';
 
-const NATS_URL = process.env.NATS_URL || 'nats://localhost:4222';
-const SUBJECT = 'crypto.update';
+let natsClient = null;
+const jc = JSONCodec();
 
-let nc = null;
-
-export async function initNatsConnection() {
+export const initNatsConnection = async () => {
   try {
-    nc = await connect({
-      servers: NATS_URL,
+    natsClient = await connect({ 
+      servers: process.env.NATS_URL,
       reconnect: true,
       maxReconnectAttempts: -1,
-      reconnectTimeWait: 2000
+      reconnectTimeWait: 2500
     });
 
-    logger.info(`Connected to NATS server at ${nc.getServer()}`);
+    logger.info('Connected to NATS server');
 
-    // Subscribe to update events
-    const sub = nc.subscribe(SUBJECT);
-    
-    for await (const msg of sub) {
-      try {
-        const data = JSON.parse(new TextDecoder().decode(msg.data));
-        if (data.trigger === 'update') {
-          logger.info('Received update trigger from NATS');
-          await storeCryptoStats();
+    // Set up subscription for crypto updates
+    const sub = natsClient.subscribe('crypto.update');
+    (async () => {
+      for await (const msg of sub) {
+        try {
+          const data = jc.decode(msg.data);
+          logger.debug('Received crypto update:', data);
+          // Handle the message
+          msg.respond(jc.encode({ status: 'received' }));
+        } catch (error) {
+          logger.error('Error processing NATS message:', error);
+          msg.respond(jc.encode({ status: 'error', message: error.message }));
         }
-      } catch (error) {
-        logger.error('Error processing NATS message:', error);
       }
-    }
+    })().catch(error => {
+      logger.error('NATS subscription error:', error);
+    });
 
-    return nc;
+    return natsClient;
   } catch (error) {
     logger.error('Failed to connect to NATS:', error);
     throw error;
   }
-}
+};
 
-export async function closeNatsConnection() {
-  if (nc) {
-    await nc.drain();
+export const getNatsClient = () => {
+  if (!natsClient) {
+    throw new Error('NATS client not initialized');
+  }
+  return natsClient;
+};
+
+export const publishEvent = async (subject, data) => {
+  if (!natsClient) {
+    throw new Error('NATS client not initialized');
+  }
+  try {
+    await natsClient.publish(subject, jc.encode(data));
+    logger.debug(`Published to ${subject}:`, data);
+  } catch (error) {
+    logger.error(`Error publishing to ${subject}:`, error);
+    throw error;
+  }
+};
+
+export const closeNatsConnection = async () => {
+  if (natsClient) {
+    await natsClient.drain();
+    natsClient = null;
     logger.info('NATS connection closed');
   }
-}
+};
 
 // Handle process termination
 process.on('SIGTERM', async () => {
