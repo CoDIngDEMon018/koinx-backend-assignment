@@ -1,6 +1,6 @@
 // api-server/src/config/nats.js
-import { connect, StringCodec, JSONCodec, headers } from 'nats';
-import logger from './logger.js';
+import { connect, StringCodec, JSONCodec } from 'nats';
+import { logger } from './logger.js';
 import { storeCryptoStats } from '../services/statsService.js';
 
 const sc = StringCodec();
@@ -9,7 +9,7 @@ let nc = null;
 
 // Global NATS configuration
 const NATS_CONFIG = {
-  servers: process.env.NATS_URL,
+  servers: process.env.NATS_URL || 'nats://localhost:4222',
   reconnect: true,
   maxReconnectAttempts: -1, // Infinite retries
   reconnectTimeWait: 2500, // Exponential backoff base
@@ -65,13 +65,10 @@ export const initNATS = async () => {
     // Start health monitoring
     startHealthChecks();
 
+    logger.info('Connected to NATS');
     return nc;
   } catch (error) {
-    logger.error('NATS: Connection failed', {
-      message: error.message,
-      code: error.code,
-      stack: error.stack,
-    });
+    logger.error('Failed to connect to NATS:', error);
     throw error;
   }
 };
@@ -181,3 +178,5 @@ export const getNATSHealth = () => ({
   server: nc?.server?.toString(),
   pendingMessages: nc?.stats().outMsgs,
 });
+
+export { sc, jc, nc };

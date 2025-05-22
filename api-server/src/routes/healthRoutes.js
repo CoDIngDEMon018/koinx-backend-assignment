@@ -1,7 +1,7 @@
-import express from 'express';
-import mongoose from 'mongoose';
-import { getNatsClient } from '../services/natsService.js';
-import logger from '../config/logger.js';
+const express = require('express');
+const mongoose = require('mongoose');
+const { getNatsClient } = require('../services/natsService.js');
+const logger = require('../config/logger.js');
 
 const router = express.Router();
 
@@ -102,4 +102,4 @@ router.get('/nats', async (req, res) => {
   }
 });
 
-export default router; 
+module.exports = router; 

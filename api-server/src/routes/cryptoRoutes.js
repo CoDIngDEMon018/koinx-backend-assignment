@@ -1,7 +1,7 @@
-import express from 'express';
-import { getLatestStats, getPriceDeviation } from '../services/cryptoService.js';
-import { validateCoin, validatePagination } from '../middleware/validator.js';
-import { globalLimiter } from '../middleware/rateLimiter.js';
+const express = require('express');
+const { getLatestStats, getPriceDeviation } = require('../services/cryptoService.js');
+const { validateCoin, validatePagination } = require('../middleware/validator.js');
+const { globalLimiter } = require('../middleware/rateLimiter.js');
 
 const router = express.Router();
 
@@ -28,4 +28,4 @@ router.get('/deviation', validateCoin, validatePagination, async (req, res, next
   }
 });
 
-export default router; 
+module.exports = router; 

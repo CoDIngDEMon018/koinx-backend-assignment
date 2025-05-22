@@ -25,6 +25,7 @@
     "express-rate-limit": "^7.1.5",
     "helmet": "^7.1.0",
     "mongoose": "^8.0.3",
+    "morgan": "^1.10.0",
     "nats": "^2.16.0",
     "node-cron": "^3.0.3",
     "prom-client": "^15.1.0",

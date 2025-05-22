@@ -1,16 +1,18 @@
 // api-server/src/server.js
 import { connectDatabase, disconnectDatabase } from './config/database.js';
 import { initNATS, closeNATS } from './config/nats.js';
-// import app from './app.js';
 import { logger } from './config/logger.js';
 import cluster from 'cluster';
 import process from 'process';
 import os from 'os';
 import http from 'http';
+import express from 'express';
 import app from '../app.js';
+import { connect } from 'nats';
+import config from './config';
 
-const PORT = process.env.PORT || 3000;
-const HEALTH_PORT = process.env.HEALTH_PORT || 3001;
+const PORT = config.port;
+const HEALTH_PORT = config.healthPort;
 const SHUTDOWN_TIMEOUT = 15000; // 15 seconds graceful shutdown window
 const CPU_COUNT = process.env.CLUSTER_MODE ? os.cpus().length : 1;
 
@@ -151,3 +153,27 @@ if (cluster.isPrimary && CPU_COUNT > 1) {
 } else {
   startServer();
 }
+
+// Connect to NATS
+const connectNats = async () => {
+  try {
+    const nats = await connect({ servers: config.natsUrl });
+    logger.info('Connected to NATS server');
+    return nats;
+  } catch (error) {
+    logger.error('Failed to connect to NATS:', error);
+    process.exit(1);
+  }
+};
+
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received. Shutting down gracefully...');
+  app.server.close(() => {
+    connectNats().then(nats => nats.close());
+    process.exit(0);
+  });
+});
+
+// Export for testing
+module.exports = { app, startServer };
